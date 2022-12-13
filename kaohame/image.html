@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset='utf-8'>
+  <meta http-equiv='X-UA-Compatible' content='IE=edge'>
+  <title>画像切り抜き</title>
+  <meta name='viewport' content='width=device-width, initial-scale=1'>
+</head>
+
+<style>
+body {
+  margin: 0;
+}
+
+#main {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+}
+
+#text {
+  width: 80%;
+  max-width: 600px;
+}
+
+#canvas {
+  margin: 20px;
+  width: 80%;
+  max-width: 600px;
+}
+</style>
+
+<script>
+let canvas = null
+let srcImage = new Image()
+
+let sx = 0
+let sy = 0
+let scale = 1
+const dx = 0
+const dy = 0
+const dWidth = 500
+const dHeight = 500
+
+let isMouseDown = null
+let mousePosX = null
+let mousePosY = null
+let touches = []
+
+function init() {
+  canvas = document.getElementById('canvas')
+  canvas.width = dWidth
+  canvas.height = dHeight
+
+  canvas.addEventListener('mousedown', (e) => {
+    isMouseDown = true
+    mousePosX = e.offsetX
+    mousePosY = e.offsetY
+  })
+
+  canvas.addEventListener('mouseup', (e) => {
+    isMouseDown = false
+  })
+
+  canvas.addEventListener('mouseleave', (e) => {
+    isMouseDown = false
+  })
+
+  canvas.addEventListener('mousemove', (e) => {
+    const newMousePosX = e.offsetX
+    const newMousePosY = e.offsetY
+
+    if (isMouseDown) {
+      const mouseDiffX = mousePosX - newMousePosX
+      const mouseDiffY = mousePosY - newMousePosY
+      const canvasDiffX = mouseDiffX / canvas.clientWidth * dWidth
+      const canvasDiffY = mouseDiffY / canvas.clientHeight * dHeight
+      const imageDiffX = canvasDiffX / scale
+      const imageDiffY = canvasDiffY / scale
+      const newSx = sx + imageDiffX
+      const newSy = sy + imageDiffY
+      sx = Math.min(Math.max(newSx, 0), maxSx())
+      sy = Math.min(Math.max(newSy, 0), maxSy())
+      draw()
+    }
+
+    mousePosX = newMousePosX
+    mousePosY = newMousePosY
+  })
+
+  canvas.addEventListener('mousewheel', (e) => {
+    e.preventDefault()
+
+    const prevScale = scale
+    const newScale = e.deltaY > 0 ? scale * 0.95 : scale * 1.05
+    scale = Math.max(newScale, minScale())
+
+    const focusX = mousePosX / canvas.clientWidth * dWidth
+    const focusY = mousePosY / canvas.clientHeight * dHeight
+    const newSx = sx + focusX * (1 / prevScale - 1 / scale)
+    const newSy = sy + focusY * (1 / prevScale - 1 / scale)
+    sx = Math.min(Math.max(newSx, 0), maxSx())
+    sy = Math.min(Math.max(newSy, 0), maxSy())
+
+    draw()
+  })
+
+  canvas.addEventListener('touchmove', (e) => {
+    // デフォルトの動作を封じて、画面がスクロールしないようにする
+    e.preventDefault()
+
+    // タッチの位置を計算する
+    const canvasRect = canvas.getClientRects()[0]
+    const newTouches = []
+    for (let i = 0; e.touches.length > i; ++i) {
+      newTouches.push({
+        x: e.touches[i].clientX - canvasRect.left,
+        y: e.touches[i].clientY - canvasRect.top,
+      })
+    }
+
+    // タッチ数が異なる場合はタッチの位置だけ記憶してリターン
+    if (touches.length !== newTouches.length) {
+      touches = newTouches
+      return
+    }
+
+    // 全てのタッチの平均位置を計算する
+    const prevTouchMeanPos = { x:0, y:0 }
+    const newTouchMeanPos = { x:0, y:0 }
+    for (let i = 0; touches.length > i; ++i) {
+      prevTouchMeanPos.x += touches[i].x
+      prevTouchMeanPos.y += touches[i].y
+      newTouchMeanPos.x += newTouches[i].x
+      newTouchMeanPos.y += newTouches[i].y
+    }
+    prevTouchMeanPos.x /= touches.length
+    prevTouchMeanPos.y /= touches.length
+    newTouchMeanPos.x /= newTouches.length
+    newTouchMeanPos.y /= newTouches.length
+
+    // 全てのタッチの平均位置が動いた距離を視点の移動量とする
+    const touchDiffX = prevTouchMeanPos.x - newTouchMeanPos.x
+    const touchDiffY = prevTouchMeanPos.y - newTouchMeanPos.y
+    const canvasDiffX = touchDiffX / canvas.clientWidth * dWidth
+    const canvasDiffY = touchDiffY / canvas.clientHeight * dHeight
+    const imageDiffX = canvasDiffX / scale
+    const imageDiffY = canvasDiffY / scale
+    let newSx = sx + imageDiffX
+    let newSy = sy + imageDiffY
+
+    // 2 点タッチ以上の場合、拡大縮小も行う
+    if (touches.length >= 2) {
+      // 全てのタッチのうち最も離れた２点の距離の変化を拡大率の変化量とする
+      let prevMaxDistance = 0
+      for (let i = 0; touches.length > i; ++i) {
+        for (let j = i+1; touches.length > j; ++j) {
+          const p1 = touches[i]
+          const p2 = touches[j]
+          prevMaxDistance = Math.max(prevMaxDistance, calcDistance(p1, p2))
+        }
+      }
+      let newMaxDistance = 0
+      for (let i = 0; newTouches.length > i; ++i) {
+        for (let j = i+1; newTouches.length > j; ++j) {
+          const p1 = newTouches[i]
+          const p2 = newTouches[j]
+          newMaxDistance = Math.max(newMaxDistance, calcDistance(p1, p2))
+        }
+      }
+      const prevScale = scale
+      const newScale = scale * newMaxDistance / prevMaxDistance
+      scale = Math.max(newScale, minScale())
+
+      // スケールの変化に合わせて画像の位置更新
+      const focusX = prevTouchMeanPos.x / canvas.clientWidth * dWidth
+      const focusY = prevTouchMeanPos.y / canvas.clientHeight * dHeight
+      newSx += focusX * (1 / prevScale - 1 / scale)
+      newSy += focusY * (1 / prevScale - 1 / scale)
+    }
+
+    // 移動範囲を制限する
+    sx = Math.min(Math.max(newSx, 0), maxSx())
+    sy = Math.min(Math.max(newSy, 0), maxSy())
+
+    // タッチの位置を更新する
+    touches = newTouches
+    
+    draw()
+  })
+
+  canvas.addEventListener('touchend', (e) => {
+    touches = []
+  })
+
+  const srcImageInput = document.getElementById('srcImageInput')
+  srcImageInput.addEventListener('change', (e) => {
+    if (!e.target.files[0]) return
+    const reader = new FileReader()
+    reader.addEventListener('load', (e) => {
+      srcImage.src = reader.result
+    })
+    reader.readAsDataURL(e.target.files[0])
+  })
+
+  srcImage.addEventListener('load', (e) => {
+    scale = Math.max(scale, minScale())
+    const sw = srcImage.width
+    const sh = srcImage.height
+    const dw = canvas.width
+    const dh = canvas.height
+    if (sh/sw < dh/dw) {
+      sx = (sw * dh / dw - sh) / 2
+      sy = 0
+    } else {
+      sx = 0
+      sy = (sh * dw / dh - sw) / 2
+    }
+    draw()
+  })
+  srcImage.src = 'cto.jpg'
+}
+
+function draw() {
+  const ctx = canvas.getContext('2d')
+
+  // 背景を黒く塗りつぶす
+  ctx.fillStyle = 'rgb(0, 0, 0)'
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+  // 画像切り出し  
+  const sWidth = dWidth / scale
+  const sHeight = dHeight / scale
+  ctx.drawImage(srcImage, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight)
+}
+
+function maxSx() {
+  return srcImage.width - dWidth / scale
+}
+
+function maxSy() {
+  return srcImage.height - dHeight / scale  
+}
+
+function minScale() {
+  return dWidth / Math.min(srcImage.width, srcImage.height)
+}
+
+function calcDistance(p1, p2) {
+  const dx = p1.x - p2.x
+  const dy = p1.y - p2.y
+  return Math.sqrt(dx * dx + dy * dy)
+}
+</script>
+
+<body onload="init()">
+  <div id="main">
+    <div id="text">
+      ・マウスドラッグ or スワイプ操作で画像の切り出し位置を変更します。<br>
+      ・マウスホイール or ピンチ操作で画像の切り出し範囲を変更します。
+    </div>
+    <canvas id="canvas"></canvas>
+    <input id="srcImageInput" type="file"></input>    
+  </div>
+</body>
+</html>
