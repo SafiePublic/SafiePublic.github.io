@@ -78,64 +78,62 @@ class SeekBar {
 
     this.canvas.addEventListener('touchmove', (e) => {
       e.preventDefault();
-      if (this.video) {
-        const canvasRect = this.canvas.getClientRects()[0]
-        const newTouches = []
-        for (let i = 0; e.touches.length > i; ++i) {
-          newTouches.push({
-            x: e.touches[i].clientX - canvasRect.left,
-            y: e.touches[i].clientY - canvasRect.top,
-          })
-        }
-
-        if (this.touches.length !== newTouches.length) {
-          this.touches = newTouches
-          return
-        }       
-        
-        const prevTouchMeanPos = { x:0, y:0 }
-        const newTouchMeanPos = { x:0, y:0 }
-        for (let i = 0; this.touches.length > i; ++i) {
-          prevTouchMeanPos.x += this.touches[i].x
-          prevTouchMeanPos.y += this.touches[i].y
-          newTouchMeanPos.x += newTouches[i].x
-          newTouchMeanPos.y += newTouches[i].y
-        }
-        prevTouchMeanPos.x /= this.touches.length
-        prevTouchMeanPos.y /= this.touches.length
-        newTouchMeanPos.x /= newTouches.length
-        newTouchMeanPos.y /= newTouches.length
-            
-        const diffX = prevTouchMeanPos.x - newTouchMeanPos.x
-        const newCurrentTime = this.currentTimeMs + diffX * this.timeMsPerPix / 1000
-        this.currentTimeMs = Math.max(0, Math.min(this.durationMs - 0.1, newCurrentTime))
-
-        if (this.touches.length >= 2) {
-          let prevMaxDistance = 0
-          for (let i = 0; this.touches.length > i; ++i) {
-            for (let j = i+1; this.touches.length > j; ++j) {
-              const p1 = this.touches[i]
-              const p2 = this.touches[j]
-              prevMaxDistance = Math.max(prevMaxDistance, this.calcDistance(p1, p2))
-            }
-          }
-          let newMaxDistance = 0
-          for (let i = 0; newTouches.length > i; ++i) {
-            for (let j = i+1; newTouches.length > j; ++j) {
-              const p1 = newTouches[i]
-              const p2 = newTouches[j]
-              newMaxDistance = Math.max(newMaxDistance, this.calcDistance(p1, p2))
-            }
-          }
-
-          const newTimeMsPerPix = this.timeMsPerPix * prevMaxDistance / newMaxDistance 
-          this.timeMsPerPix = Math.min(Math.max(MIN_TIME_MS_PER_PIX, newTimeMsPerPix), this.maxTimeMsPerPix)
-        }
-
-        this.draw()
-
-        this.touches = newTouches
+      const canvasRect = this.canvas.getClientRects()[0]
+      const newTouches = []
+      for (let i = 0; e.touches.length > i; ++i) {
+        newTouches.push({
+          x: e.touches[i].clientX - canvasRect.left,
+          y: e.touches[i].clientY - canvasRect.top,
+        })
       }
+
+      if (this.touches.length !== newTouches.length) {
+        this.touches = newTouches
+        return
+      }       
+      
+      const prevTouchMeanPos = { x:0, y:0 }
+      const newTouchMeanPos = { x:0, y:0 }
+      for (let i = 0; this.touches.length > i; ++i) {
+        prevTouchMeanPos.x += this.touches[i].x
+        prevTouchMeanPos.y += this.touches[i].y
+        newTouchMeanPos.x += newTouches[i].x
+        newTouchMeanPos.y += newTouches[i].y
+      }
+      prevTouchMeanPos.x /= this.touches.length
+      prevTouchMeanPos.y /= this.touches.length
+      newTouchMeanPos.x /= newTouches.length
+      newTouchMeanPos.y /= newTouches.length
+          
+      const diffX = prevTouchMeanPos.x - newTouchMeanPos.x
+      const newCurrentTime = this.currentTimeMs + diffX * this.timeMsPerPix / 1000
+      this.currentTimeMs = Math.max(0, Math.min(this.durationMs - 0.1, newCurrentTime))
+
+      if (this.touches.length >= 2) {
+        let prevMaxDistance = 0
+        for (let i = 0; this.touches.length > i; ++i) {
+          for (let j = i+1; this.touches.length > j; ++j) {
+            const p1 = this.touches[i]
+            const p2 = this.touches[j]
+            prevMaxDistance = Math.max(prevMaxDistance, this.calcDistance(p1, p2))
+          }
+        }
+        let newMaxDistance = 0
+        for (let i = 0; newTouches.length > i; ++i) {
+          for (let j = i+1; newTouches.length > j; ++j) {
+            const p1 = newTouches[i]
+            const p2 = newTouches[j]
+            newMaxDistance = Math.max(newMaxDistance, this.calcDistance(p1, p2))
+          }
+        }
+
+        const newTimeMsPerPix = this.timeMsPerPix * prevMaxDistance / newMaxDistance 
+        this.timeMsPerPix = Math.min(Math.max(MIN_TIME_MS_PER_PIX, newTimeMsPerPix), this.maxTimeMsPerPix)
+      }
+
+      this.draw()
+
+      this.touches = newTouches
     })
 
     this.canvas.addEventListener('touchend', (e) => {
