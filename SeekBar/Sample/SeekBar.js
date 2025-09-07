@@ -106,7 +106,7 @@ class SeekBar {
       newTouchMeanPos.y /= newTouches.length
           
       const diffX = prevTouchMeanPos.x - newTouchMeanPos.x
-      const newCurrentTime = this.currentTimeMs + diffX * this.timeMsPerPix / 1000
+      const newCurrentTime = this.currentTimeMs + diffX * this.timeMsPerPix
       this.currentTimeMs = Math.max(0, Math.min(this.durationMs - 0.1, newCurrentTime))
 
       if (this.touches.length >= 2) {
@@ -128,7 +128,7 @@ class SeekBar {
         }
 
         const newTimeMsPerPix = this.timeMsPerPix * prevMaxDistance / newMaxDistance 
-        this.timeMsPerPix = Math.min(Math.max(MIN_TIME_MS_PER_PIX, newTimeMsPerPix), this.maxTimeMsPerPix)
+        this.timeMsPerPix = Math.max(MIN_TIME_MS_PER_PIX, newTimeMsPerPix)
       }
 
       this.draw()
