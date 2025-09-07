@@ -1,0 +1,44 @@
+<html lang="ja">
+<head>
+  <meta charset='utf-8'>
+  <title>Safie Recurute Movie</title>
+</head>
+
+<script src="./MoviePlayer.js" type="text/javascript"></script>
+<script src="./MoviePlayerImpl.js" type="text/javascript"></script>
+
+<style>
+body {
+  margin: 0;
+}
+
+#videoView {
+  width: 100vw;
+  height: 100vh;
+}
+
+.link {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  background-color: rgba(255, 255, 255, 0.7);
+  padding: 10px;
+  border-radius: 5px;
+}
+
+</style>
+
+<script>
+function init() {
+  const videoView = document.getElementById('videoView');
+  const moviePlayer = new MoviePlayer(videoView);
+  moviePlayer.setSrc('https://bucket.safie.link/techblog/mov/Safie_Recurute_2025_Short_ver.mp4')
+}
+</script>
+
+<body onload="init()">
+  <div id="videoView"></div>
+  <div class="link">ロングバージョンは<a href="https://www.youtube.com/watch?v=XjXOGGwtPSA">こちら</a></div>
+</body>
+
+</html>
