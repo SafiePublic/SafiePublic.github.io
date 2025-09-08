@@ -54,15 +54,17 @@ class MoviePlayerImpl {
 
     this.playButton = document.createElement('button');
     this.playButton.textContent = 'Play';
-    this.playButton.style.bottom = (TIMELINE_HEIGHT + 10) + 'px';
-    this.playButton.style.left = '10px';
+    this.playButton.style.fontSize = '24px';
+    this.playButton.style.bottom = (TIMELINE_HEIGHT + 20) + 'px';
+    this.playButton.style.left = '20px';
     this.playButton.style.position = 'absolute';
     this.playButton.style.visibility = 'hidden';
     this.playButton.style.backgroundColor = '#3434ac';
     this.playButton.style.color = '#ffffff';
     this.playButton.style.border = 'none';
-    this.playButton.style.padding = '5px 10px';
+    this.playButton.style.padding = '8px 16px';
     this.playButton.style.borderRadius = '5px';
+    this.playButton.style.cursor = 'pointer';
     this.dom.appendChild(this.playButton);
 
     this.volumeSlider = document.createElement('input');
@@ -72,9 +74,10 @@ class MoviePlayerImpl {
     this.volumeSlider.step = 0.01;
     this.volumeSlider.style.position = 'absolute';
     this.volumeSlider.style.visibility = 'hidden';
-    this.volumeSlider.style.bottom = (TIMELINE_HEIGHT + 10) + 'px';
-    this.volumeSlider.style.right = '10px';
-    this.volumeSlider.style.width = '100px';
+    this.volumeSlider.style.bottom = (TIMELINE_HEIGHT + 20) + 'px';
+    this.volumeSlider.style.right = '20px';
+    this.volumeSlider.style.width = '160px';
+    this.volumeSlider.style.cursor = 'pointer';
     this.dom.appendChild(this.volumeSlider);
     this.volumeSlider.addEventListener('input', () => {
       if (this.video) {
