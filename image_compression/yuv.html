@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <title>YUV3層ビューワ</title>
+    <style>
+        body {
+            font-family: 'Roboto', 'Yu Gothic', 'Meiryo', sans-serif;
+            background: #f7f9fa;
+            color: #222;
+            margin: 0;
+        }
+
+        .container {
+            max-width: 700px;
+            margin: 40px auto;
+            background: #fff;
+            border-radius: 16px;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+            padding: 32px 24px;
+        }
+
+        h1 {
+            color: #1976d2;
+            font-size: 1.3rem;
+            margin-bottom: 20px;
+        }
+
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 8px;
+            margin-bottom: 18px;
+        }
+
+        .input-group label {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 1rem;
+            background: #f0f4f8;
+            border-radius: 6px;
+            padding: 6px 10px;
+            width: 220px;
+        }
+
+        .input-group input[type="checkbox"] {
+            accent-color: #1976d2;
+            width: 18px;
+            height: 18px;
+        }
+
+        .input-group input[type="number"] {
+            width: 3em;
+            border: 1px solid #b0bec5;
+            border-radius: 4px;
+            padding: 2px 4px;
+            font-size: 1rem;
+            background: #fff;
+            margin-left: 2px;
+        }
+
+        input[type="file"] {
+            margin-bottom: 18px;
+            font-size: 1rem;
+        }
+
+        .canvas-wrap {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: #f0f4f8;
+            border-radius: 12px;
+            padding: 18px;
+        }
+
+        canvas {
+            border: 1.5px solid #90caf9;
+            border-radius: 8px;
+            background: #fff;
+        }
+
+        .invert-btn {
+            margin-left: 16px;
+            padding: 7px 18px;
+            font-size: 1rem;
+            border: 1.5px solid #1976d2;
+            border-radius: 6px;
+            background: #1976d2;
+            color: #fff;
+            cursor: pointer;
+            font-weight: 700;
+        }
+
+        .invert-btn.inverted {
+            background: #fff;
+            color: #1976d2;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>YUV3層ビューワ</h1>
+        <input type="file" id="input-img" accept="image/*">
+        <div class="input-group">
+            <label><input type="checkbox" id="chkY" checked>Y層&nbsp;&nbsp;スキップ:<input type="number" id="skipY" value="1"
+                    min="1" max="200"></label>
+            <label><input type="checkbox" id="chkU" checked>U層&nbsp;&nbsp;スキップ:<input type="number" id="skipU" value="2"
+                    min="1" max="200"></label>
+            <label><input type="checkbox" id="chkV" checked>V層&nbsp;&nbsp;スキップ:<input type="number" id="skipV" value="2"
+                    min="1" max="200"></label>
+            <button id="invertYUVBtn" class="invert-btn" style="align-self: flex-start; margin-left: 0;">白黒反転</button>
+        </div>
+        <div class="canvas-wrap">
+            <canvas id="canvas-yuv" width="400" height="400"></canvas>
+        </div>
+    </div>
+    <script src="./CustomCanvas.js"></script>
+</body>
+
+</html>

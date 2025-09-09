@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>画像ピクセル拡大ツール (クリック固定機能付き)</title>
+    <style>
+        /* --- CSSコード --- */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            margin: 20px;
+        }
+
+        h1,
+        h2 {
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 5px;
+        }
+
+        hr {
+            margin: 20px 0;
+        }
+
+        .controls {
+            margin-bottom: 15px;
+        }
+
+        .container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 30px;
+            /* ★追加: コンテナ内の要素を上端で揃える */
+            align-items: flex-start;
+        }
+
+        .canvas-wrapper {
+            position: relative;
+            flex-shrink: 0;
+            border: 2px solid #ccc;
+            background-color: #f0f0f0;
+            max-width: 80vw;
+            max-height: 80vh;
+            overflow: auto;
+            transition: border-color 0.3s ease;
+        }
+
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        #highlight-canvas {
+            pointer-events: none;
+        }
+
+        .inspector-wrapper {
+            min-width: 600px;
+            /* ★追加: Flexboxを有効にし、子要素を縦に並べる */
+            display: flex;
+            flex-direction: column;
+        }
+
+        #grid-container {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            border: 1px solid #000;
+            width: 560px;
+            /* 70px * 8 */
+            height: 560px;
+            /* 70px * 8 */
+            /* ★追加: 上の余白を自動で最大にし、要素を下端に押しやる */
+            margin-top: auto;
+        }
+
+        .grid-cell {
+            width: 70px;
+            height: 70px;
+            box-sizing: border-box;
+            border: 1px solid #ddd;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            font-size: 10px;
+            word-break: break-all;
+            color: #000;
+            background-color: #fff;
+        }
+
+        .grid-cell.color-mode {
+            font-size: 0;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>画像ピクセル拡大ツール</h1>
+    <p>画像ファイルを選択し、画像の上にマウスカーソルを合わせると、その地点を中心とした8x8ピクセルの情報が右側に表示されます。<br>
+        <strong>画像上をクリックすると、その場所の表示で固定／解除できます。</strong> 拡大中の箇所はオレンジ色の枠で示されます。
+    </p>
+
+    <div class="controls">
+        <input type="file" id="image-input" accept="image/*">
+    </div>
+
+    <hr>
+
+    <div class="container">
+        <div class="canvas-wrapper" id="canvas-wrapper">
+            <canvas id="canvas"></canvas>
+            <canvas id="highlight-canvas"></canvas>
+        </div>
+        <div class="inspector-wrapper">
+            <h2>8x8 拡大グリッド</h2>
+            <div id="display-mode-selector" class="controls">
+                <label><input type="radio" name="display-mode" value="color" checked> 色で表示</label>
+                <label><input type="radio" name="display-mode" value="rgb"> RGB値で表示</label>
+                <label><input type="radio" name="display-mode" value="binary"> バイナリ値で表示</label>
+            </div>
+            <div id="grid-container">
+                <p>画像を読み込んでください。</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- JavaScriptコード ---
+        document.addEventListener('DOMContentLoaded', () => {
+            // DOM要素の取得
+            const imageInput = document.getElementById('image-input');
+            const canvas = document.getElementById('canvas');
+            const canvasWrapper = document.getElementById('canvas-wrapper');
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+            const gridContainer = document.getElementById('grid-container');
+            const displayModeRadios = document.querySelectorAll('input[name="display-mode"]');
+            const highlightCanvas = document.getElementById('highlight-canvas');
+            const highlightCtx = highlightCanvas.getContext('2d');
+
+            // ★追加: レイアウト調整用にinspector-wrapperを取得
+            const inspectorWrapper = document.querySelector('.inspector-wrapper');
+
+            // 状態を保持する変数
+            let isLocked = false;
+            let lastMousePosition = { x: -1, y: -1 };
+            let currentDisplayMode = 'color';
+
+            // --- イベントリスナーの設定 ---
+
+            imageInput.addEventListener('change', handleImageUpload);
+            canvas.addEventListener('mousemove', handleMouseMove);
+            canvas.addEventListener('click', handleMouseClick);
+            canvas.addEventListener('mouseleave', () => {
+                if (!isLocked) {
+                    highlightCtx.clearRect(0, 0, highlightCanvas.width, highlightCanvas.height);
+                }
+            });
+
+            displayModeRadios.forEach(radio => {
+                radio.addEventListener('change', (e) => {
+                    currentDisplayMode = e.target.value;
+                    if (lastMousePosition.x !== -1) {
+                        updateMagnifiedGrid(lastMousePosition.x, lastMousePosition.y);
+                        drawHighlight(lastMousePosition.x, lastMousePosition.y);
+                    }
+                });
+            });
+
+            // --- 関数定義 ---
+
+            function handleMouseClick(e) {
+                isLocked = !isLocked;
+
+                if (isLocked) {
+                    canvas.style.cursor = 'default';
+                    canvasWrapper.style.borderColor = '#dc3545';
+                    const rect = canvas.getBoundingClientRect();
+                    const x = Math.floor(e.clientX - rect.left);
+                    const y = Math.floor(e.clientY - rect.top);
+                    lastMousePosition = { x, y };
+                    updateMagnifiedGrid(x, y);
+                    drawHighlight(x, y);
+                } else {
+                    canvas.style.cursor = 'crosshair';
+                    canvasWrapper.style.borderColor = '#ccc';
+                    handleMouseMove(e);
+                }
+            }
+
+            function handleImageUpload(e) {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        canvasWrapper.style.width = `${img.width}px`;
+                        canvasWrapper.style.height = `${img.height}px`;
+
+                        canvas.width = img.width;
+                        canvas.height = img.height;
+                        highlightCanvas.width = img.width;
+                        highlightCanvas.height = img.height;
+
+                        ctx.drawImage(img, 0, 0);
+                        highlightCtx.clearRect(0, 0, highlightCanvas.width, highlightCanvas.height);
+
+                        // ★追加: 画像の高さに合わせてグリッド側の高さを調整
+                        // requestAnimationFrameを使い、ブラウザの描画更新後に高さを取得して確実性を高める
+                        requestAnimationFrame(() => {
+                            const canvasWrapperHeight = canvasWrapper.offsetHeight;
+                            inspectorWrapper.style.minHeight = `${canvasWrapperHeight}px`;
+                        });
+
+
+                        if (isLocked) {
+                            isLocked = false;
+                            canvas.style.cursor = 'crosshair';
+                            canvasWrapper.style.borderColor = '#ccc';
+                        }
+                    };
+                    img.src = event.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+
+            function handleMouseMove(e) {
+                if (isLocked) return;
+
+                const rect = canvas.getBoundingClientRect();
+                const x = Math.floor(e.clientX - rect.left);
+                const y = Math.floor(e.clientY - rect.top);
+
+                lastMousePosition = { x, y };
+                updateMagnifiedGrid(x, y);
+                drawHighlight(x, y);
+            }
+
+            function drawHighlight(x, y) {
+                highlightCtx.clearRect(0, 0, highlightCanvas.width, highlightCanvas.height);
+
+                if (canvas.width === 0 || canvas.height === 0) return;
+
+                const startX = Math.max(0, Math.min(x - 4, canvas.width - 8));
+                const startY = Math.max(0, Math.min(y - 4, canvas.height - 8));
+
+                highlightCtx.fillStyle = 'rgba(255, 165, 0, 0.5)';
+                highlightCtx.fillRect(startX, startY, 8, 8);
+                highlightCtx.strokeStyle = 'orange';
+                highlightCtx.lineWidth = 1;
+                highlightCtx.strokeRect(startX + 0.5, startY + 0.5, 7, 7);
+            }
+
+            function updateMagnifiedGrid(x, y) {
+                if (canvas.width === 0 || canvas.height === 0) return;
+
+                const startX = Math.max(0, Math.min(x - 4, canvas.width - 8));
+                const startY = Math.max(0, Math.min(y - 4, canvas.height - 8));
+
+                const imageData = ctx.getImageData(startX, startY, 8, 8);
+                const data = imageData.data;
+
+                gridContainer.innerHTML = '';
+
+                for (let i = 0; i < data.length; i += 4) {
+                    const r = data[i];
+                    const g = data[i + 1];
+                    const b = data[i + 2];
+
+                    const cell = document.createElement('div');
+                    cell.className = 'grid-cell';
+
+                    switch (currentDisplayMode) {
+                        case 'color':
+                            cell.classList.add('color-mode');
+                            cell.style.backgroundColor = `rgb(${r}, ${g}, ${b})`;
+                            cell.title = `(${r}, ${g}, ${b})`;
+                            break;
+                        case 'rgb':
+                            cell.textContent = `(${r},${g},${b})`;
+                            break;
+                        case 'binary':
+                            const rBin = r.toString(2).padStart(8, '0');
+                            const gBin = g.toString(2).padStart(8, '0');
+                            const bBin = b.toString(2).padStart(8, '0');
+                            cell.textContent = rBin + gBin + bBin;
+                            break;
+                    }
+                    gridContainer.appendChild(cell);
+                }
+            }
+        });
+    </script>
+</body>
+
+</html>

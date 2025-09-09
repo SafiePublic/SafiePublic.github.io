@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DCT/IDCT可視化ツール</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+
+        canvas {
+            border: 1px solid #ccc;
+            border-radius: 0.5rem;
+        }
+
+        .canvas-container {
+            margin: 5px;
+            padding: 10px;
+            background-color: #f9f9f9;
+            border-radius: 0.75rem;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .controls button,
+        .download-btn {
+            margin: 5px;
+            padding: 8px 12px;
+            background-color: #4A90E2;
+            color: white;
+            border: none;
+            border-radius: 0.375rem;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            font-size: 0.875rem;
+        }
+
+        .controls button:hover,
+        .download-btn:hover {
+            background-color: #357ABD;
+        }
+
+        .controls button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+
+        .info-text {
+            font-size: 0.9rem;
+            color: #333;
+            margin-top: 5px;
+        }
+
+        #dctCoefficientsTable {
+            margin-top: 10px;
+            border-collapse: collapse;
+            user-select: none;
+        }
+
+        /* Prevent text selection on click */
+        #dctCoefficientsTable td,
+        #dctCoefficientsTable th {
+            border: 1px solid #ddd;
+            padding: 4px;
+            text-align: right;
+            font-size: 0.75rem;
+            min-width: 35px;
+            height: 25px;
+        }
+
+        #dctCoefficientsTable th {
+            background-color: #f2f2f2;
+        }
+
+
+        #dctCoefficientsTable td.selected-for-idct {
+            background-color: #a0d8ef;
+        }
+
+        .n-size-selector {
+            margin-bottom: 10px;
+            font-size: 1rem;
+        }
+
+        /* Highlight for IDCT selection */
+        .canvas-title-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-100 p-4 md:p-8">
+    <div class="container mx-auto max-w-7xl bg-white p-6 rounded-lg shadow-xl">
+        <h1 class="text-2xl font-bold text-center mb-6 text-gray-700">DCT/IDCT (離散コサイン変換・逆変換) 可視化ツール</h1>
+
+        <div class="mb-6">
+            <label class="n-size-selector">
+                ブロックサイズ N×N：
+                <input type="number" id="blockSizeN" value="8" min="2" max="64" style="width:4em;">
+            </label>
+            <label for="imageLoader" class="block mb-2 text-sm font-medium text-gray-700">画像ファイルを選択してください:</label>
+            <input type="file" id="imageLoader" accept="image/*"
+                class="block w-full text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 cursor-pointer focus:outline-none">
+            <p id="messageArea" class="text-red-500 mt-2 text-sm"></p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div class="canvas-container">
+                <div class="canvas-title-container">
+                    <p class="font-semibold text-gray-600">Canvas A: 元画像</p>
+                    <button class="download-btn" data-canvas-id="canvasA">JPEG保存</button>
+                </div>
+                <canvas id="canvasA" width="320" height="240"></canvas>
+                <p class="info-text">選択ブロック座標: (<span id="blockXVal">N/A</span>, <span id="blockYVal">N/A</span>)</p>
+            </div>
+            <div class="canvas-container">
+                <div class="canvas-title-container">
+                    <p class="font-semibold text-gray-600">Canvas B: 選択中の8x8領域</p>
+                    <button class="download-btn" data-canvas-id="canvasB">JPEG保存</button>
+                </div>
+                <canvas id="canvasB" width="256" height="256"></canvas>
+            </div>
+            <div class="canvas-container">
+                <div class="canvas-title-container">
+                    <p class="font-semibold text-gray-600">Canvas C: 現在の基底関数 (u=<span id="uVal">0</span>, v=<span
+                            id="vVal">0</span>)</p>
+                    <button class="download-btn" data-canvas-id="canvasC">JPEG保存</button>
+                </div>
+                <canvas id="canvasC" width="256" height="256"></canvas>
+            </div>
+            <div class="canvas-container md:col-span-1">
+                <div class="canvas-title-container">
+                    <p class="font-semibold text-gray-600">Canvas D: 内積結果</p>
+                    <button class="download-btn" data-canvas-id="canvasD">JPEG保存</button>
+                </div>
+                <canvas id="canvasD" width="256" height="50"></canvas>
+                <p class="info-text">内積値 (DCT係数): <span id="innerProductVal" class="font-mono">N/A</span></p>
+            </div>
+            <div class="canvas-container md:col-span-2">
+                <div class="canvas-title-container">
+                    <p class="font-semibold text-gray-600">Canvas E: 逆DCTによる再構成画像</p>
+                    <button class="download-btn" data-canvas-id="canvasE">JPEG保存</button>
+                </div>
+                <canvas id="canvasE" width="256" height="256"></canvas>
+                <p class="info-text">IDCTにはDCT係数テーブルから係数を選択してください。</p>
+            </div>
+        </div>
+
+        <div class="controls text-center my-6 space-x-2">
+            <button id="prevBasisBtn" disabled>前の基底関数</button>
+            <button id="nextBasisBtn" disabled>次の基底関数</button>
+            <button id="processAllBtn" disabled>選択ブロックの全DCT係数を計算</button>
+            <button id="idctBtn" disabled>選択した係数で逆DCT</button>
+            <button id="clearIdctSelectionBtn" disabled>IDCT選択クリア</button>
+        </div>
+
+        <div id="dctCoefficientsOutput" class="canvas-container hidden">
+            <p class="font-semibold text-gray-600">DCT係数 (8x8) - クリックしてIDCTに使用する係数を選択</p>
+            <div id="dctCoefficientsTableContainer" class="overflow-x-auto"></div>
+        </div>
+    </div>
+
+    <script>
+        // Canvas要素とコンテキストの取得
+        const canvasA = document.getElementById('canvasA');
+        const ctxA = canvasA.getContext('2d');
+        const canvasB = document.getElementById('canvasB');
+        const ctxB = canvasB.getContext('2d');
+        const canvasC = document.getElementById('canvasC');
+        const ctxC = canvasC.getContext('2d');
+        const canvasD = document.getElementById('canvasD');
+        const ctxD = canvasD.getContext('2d');
+        const canvasE = document.getElementById('canvasE'); // New canvas for IDCT
+        const ctxE = canvasE.getContext('2d');
+
+        // UI要素の取得
+        const imageLoader = document.getElementById('imageLoader');
+        const uValSpan = document.getElementById('uVal');
+        const vValSpan = document.getElementById('vVal');
+        const innerProductValSpan = document.getElementById('innerProductVal');
+        const blockXSpan = document.getElementById('blockXVal');
+        const blockYSpan = document.getElementById('blockYVal');
+        const nextBasisBtn = document.getElementById('nextBasisBtn');
+        const prevBasisBtn = document.getElementById('prevBasisBtn');
+        const processAllBtn = document.getElementById('processAllBtn');
+        const idctBtn = document.getElementById('idctBtn');
+        const clearIdctSelectionBtn = document.getElementById('clearIdctSelectionBtn');
+        const messageArea = document.getElementById('messageArea');
+        const dctCoefficientsOutputDiv = document.getElementById('dctCoefficientsOutput');
+        const dctCoefficientsTableContainer = document.getElementById('dctCoefficientsTableContainer');
+        const downloadBtns = document.querySelectorAll('.download-btn');
+
+        // グローバル変数
+        let originalImage = null;
+        let originalImageData = null;
+        let selectedBlockData = null; // 8x8 グレースケールデータ (P'), mean-centered
+        let currentBlockCoords = { x: -1, y: -1 };
+
+
+        let currentU = 0;
+        let currentV = 0;
+        let N_DCT = 8;
+
+        let allBasisFunctions = [];
+        let allCoefficients = [];
+        let selectedCoefficientsForIDCT = [];
+        let currentCoeffAbsMax = 1;
+
+        // 初期化処理: 全基底関数を事前に計算
+
+        function precomputeAllBasisFunctions() {
+            allBasisFunctions = Array(N_DCT).fill(null).map(() => Array(N_DCT).fill(null));
+            for (let u = 0; u < N_DCT; u++) {
+                for (let v = 0; v < N_DCT; v++) {
+                    allBasisFunctions[u][v] = generateDCTBasis(u, v, N_DCT);
+                }
+            }
+        }
+        precomputeAllBasisFunctions();
+
+        // 画像ローダーのイベントリスナー
+        imageLoader.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (file && file.type.startsWith('image/')) {
+                messageArea.textContent = '';
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    originalImage = new Image();
+                    originalImage.onload = () => {
+                        const MAX_A_WIDTH = 320;
+                        const MAX_A_HEIGHT = 240;
+                        let drawWidth = originalImage.width;
+                        let drawHeight = originalImage.height;
+
+                        if (drawWidth > MAX_A_WIDTH) {
+                            drawHeight = (MAX_A_WIDTH / drawWidth) * drawHeight;
+                            drawWidth = MAX_A_WIDTH;
+                        }
+                        if (drawHeight > MAX_A_HEIGHT) {
+                            drawWidth = (MAX_A_HEIGHT / drawHeight) * drawWidth;
+                            drawHeight = MAX_A_HEIGHT;
+                        }
+
+                        // 常に最大サイズ
+                        canvasA.width = MAX_A_WIDTH;
+                        canvasA.height = MAX_A_HEIGHT;
+                        // まず白で塗りつぶし
+                        ctxA.fillStyle = '#fff';
+                        ctxA.fillRect(0, 0, canvasA.width, canvasA.height);
+                        // 左上に画像を描画
+                        ctxA.drawImage(originalImage, 0, 0, drawWidth, drawHeight);
+                        originalImageData = ctxA.getImageData(0, 0, canvasA.width, canvasA.height);
+
+                        resetUIState();
+                    };
+                    originalImage.onerror = () => {
+                        messageArea.textContent = '画像の読み込みに失敗しました。';
+                        resetUIState();
+                    }
+                    originalImage.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            } else {
+                messageArea.textContent = '画像ファイルを選択してください。';
+                originalImage = null;
+                originalImageData = null;
+                resetUIState();
+            }
+        });
+
+        function resetUIState() {
+            selectedBlockData = null;
+            currentBlockCoords = { x: -1, y: -1 };
+            blockXSpan.textContent = 'N/A';
+            blockYSpan.textContent = 'N/A';
+            clearCanvasWithMessage(canvasB, '領域を選択');
+            clearCanvasWithMessage(canvasC, '領域を選択');
+            clearCanvasWithMessage(canvasD, 'N/A');
+            clearCanvasWithMessage(canvasE, 'IDCT結果');
+            innerProductValSpan.textContent = 'N/A';
+            uValSpan.textContent = '0';
+            vValSpan.textContent = '0';
+            nextBasisBtn.disabled = true;
+            prevBasisBtn.disabled = true;
+            processAllBtn.disabled = true;
+            idctBtn.disabled = true;
+            clearIdctSelectionBtn.disabled = true;
+            dctCoefficientsOutputDiv.classList.add('hidden');
+            dctCoefficientsTableContainer.innerHTML = '';
+            selectedCoefficientsForIDCT = Array(N_DCT).fill(null).map(() => Array(N_DCT).fill(false));
+            if (originalImageData) {
+                ctxA.putImageData(originalImageData, 0, 0);
+            } else {
+                clearCanvasWithMessage(canvasA, '画像をアップロード');
+            }
+        }
+
+
+        // CanvasAのクリックイベントリスナー
+        canvasA.addEventListener('click', (event) => {
+            if (!originalImage || !originalImageData) return;
+
+            const rect = canvasA.getBoundingClientRect();
+            const scaleX = canvasA.width / rect.width;
+            const scaleY = canvasA.height / rect.height;
+
+            const x = (event.clientX - rect.left) * scaleX;
+            const y = (event.clientY - rect.top) * scaleY;
+
+            currentBlockCoords.x = Math.floor(x / N_DCT) * N_DCT;
+            currentBlockCoords.y = Math.floor(y / N_DCT) * N_DCT;
+
+            if (currentBlockCoords.x + N_DCT > canvasA.width || currentBlockCoords.y + N_DCT > canvasA.height) {
+                messageArea.textContent = '選択範囲が画像の境界外です。';
+                selectedBlockData = null;
+                clearCanvasWithMessage(canvasB, '領域を選択');
+                nextBasisBtn.disabled = true;
+                prevBasisBtn.disabled = true;
+                processAllBtn.disabled = true;
+                idctBtn.disabled = true;
+                clearIdctSelectionBtn.disabled = true;
+                if (originalImageData) ctxA.putImageData(originalImageData, 0, 0);
+                return;
+            }
+            messageArea.textContent = '';
+
+            blockXSpan.textContent = currentBlockCoords.x;
+            blockYSpan.textContent = currentBlockCoords.y;
+
+            // 1. 元画像を再描画 (CanvasAをクリーンな状態に)
+            ctxA.putImageData(originalImageData, 0, 0);
+
+            // 2. CanvasB用のブロックデータをハイライト描画前に取得
+            const blockImageDataForB = ctxA.getImageData(currentBlockCoords.x, currentBlockCoords.y, N_DCT, N_DCT);
+            drawBlockOnB(blockImageDataForB); // CanvasBにハイライトなしのブロックを描画
+
+            // 3. CanvasAにハイライトを描画
+            if (currentBlockCoords.x !== -1) {
+                ctxA.fillStyle = 'rgba(255, 165, 0, 0.5)'; // 半透明のオレンジ
+                ctxA.fillRect(currentBlockCoords.x, currentBlockCoords.y, N_DCT, N_DCT);
+            }
+
+            selectedBlockData = getGrayscaleBlockAndMeanCenter(blockImageDataForB, N_DCT); // N対応
+
+            currentU = 0;
+            currentV = 0;
+            processSelectedBlockAllCoefficients();
+
+            nextBasisBtn.disabled = false;
+            prevBasisBtn.disabled = false;
+            processAllBtn.disabled = false;
+            idctBtn.disabled = true;
+            clearIdctSelectionBtn.disabled = true;
+            dctCoefficientsOutputDiv.classList.add('hidden');
+            clearCanvasWithMessage(canvasE, 'IDCT結果');
+            selectedCoefficientsForIDCT = Array(N_DCT).fill(null).map(() => Array(N_DCT).fill(false));
+        });
+
+        // 8x8ブロックをCanvasBに拡大描画 (格子付き)
+        function drawBlockOnB(imageDataBlock) {
+            clearCanvas(canvasB);
+            const cellSize = canvasB.width / N_DCT;
+            for (let r = 0; r < N_DCT; r++) {
+                for (let c = 0; c < N_DCT; c++) {
+                    const index = (r * N_DCT + c) * 4;
+                    const red = imageDataBlock.data[index];
+                    const green = imageDataBlock.data[index + 1];
+                    const blue = imageDataBlock.data[index + 2];
+                    ctxB.fillStyle = `rgb(${red},${green},${blue})`;
+                    ctxB.fillRect(c * cellSize, r * cellSize, cellSize, cellSize);
+                }
+            }
+            // 格子を描画
+            ctxB.strokeStyle = '#888';
+            ctxB.lineWidth = 0.5;
+            for (let i = 1; i < N_DCT; i++) {
+                ctxB.beginPath();
+                ctxB.moveTo(i * cellSize, 0);
+                ctxB.lineTo(i * cellSize, canvasB.height);
+                ctxB.stroke();
+                ctxB.beginPath();
+                ctxB.moveTo(0, i * cellSize);
+                ctxB.lineTo(canvasB.width, i * cellSize);
+                ctxB.stroke();
+            }
+        }
+
+        // 8x8ブロックをグレースケール化し、平均値を引く
+        function getGrayscaleBlockAndMeanCenter(imageDataBlock, N) {
+            N = N || N_DCT;
+            const grayBlock = Array(N).fill(null).map(() => Array(N).fill(0));
+            for (let r = 0; r < N; r++) {
+                for (let c = 0; c < N; c++) {
+                    const index = (r * N + c) * 4;
+                    const red = imageDataBlock.data[index];
+                    const green = imageDataBlock.data[index + 1];
+                    const blue = imageDataBlock.data[index + 2];
+                    const gray = 0.299 * red + 0.587 * green + 0.114 * blue;
+                    grayBlock[r][c] = gray - 128;
+                }
+            }
+            return grayBlock;
+        }
+        // Nサイズ変更UI
+        document.getElementById('blockSizeN').addEventListener('change', (e) => {
+            const n = parseInt(e.target.value);
+            if (n >= 2 && n <= 64) {
+                N_DCT = n;
+                precomputeAllBasisFunctions();
+                resetUIState();
+            }
+        });
+
+        // DCT基底関数を生成
+        function generateDCTBasis(u, v, N) {
+            const basis = Array(N).fill(null).map(() => Array(N).fill(0));
+            const alpha = (k) => (k === 0 ? 1 / Math.sqrt(N) : Math.sqrt(2 / N));
+            for (let x = 0; x < N; x++) {
+                for (let y = 0; y < N; y++) {
+                    const cosX = Math.cos(((2 * x + 1) * u * Math.PI) / (2 * N));
+                    const cosY = Math.cos(((2 * y + 1) * v * Math.PI) / (2 * N));
+                    basis[x][y] = alpha(u) * alpha(v) * cosX * cosY;
+                }
+            }
+            return basis;
+        }
+
+        // 基底関数をCanvasCに描画
+        function drawBasisOnC(basisMatrix) {
+            clearCanvas(canvasC);
+            const cellSize = canvasC.width / N_DCT;
+            let minVal = basisMatrix[0][0];
+            let maxVal = basisMatrix[0][0];
+            for (let r = 0; r < N_DCT; r++) {
+                for (let c = 0; c < N_DCT; c++) {
+                    if (basisMatrix[r][c] < minVal) minVal = basisMatrix[r][c];
+                    if (basisMatrix[r][c] > maxVal) maxVal = basisMatrix[r][c];
+                }
+            }
+            const range = maxVal - minVal;
+
+            for (let r = 0; r < N_DCT; r++) {
+                for (let c = 0; c < N_DCT; c++) {
+                    let gray = 128;
+                    if (range !== 0) {
+                        gray = ((basisMatrix[r][c] - minVal) / range) * 255;
+                    }
+                    ctxC.fillStyle = `rgb(${Math.round(gray)},${Math.round(gray)},${Math.round(gray)})`;
+                    ctxC.fillRect(c * cellSize, r * cellSize, cellSize, cellSize);
+                }
+            }
+        }
+
+        // 内積を計算
+        function calculateInnerProduct(blockMatrix, basisMatrix) {
+            let product = 0;
+            for (let r = 0; r < N_DCT; r++) {
+                for (let c = 0; c < N_DCT; c++) {
+                    product += blockMatrix[r][c] * basisMatrix[r][c];
+                }
+            }
+            return product;
+        }
+
+        // 内積結果をCanvasDに描画
+        function drawInnerProductOnD(value, absMaxValue) {
+            clearCanvas(canvasD);
+            const normalizedValue = absMaxValue === 0 ? 0.5 : (value / absMaxValue + 1) / 2;
+            const gray = Math.round(normalizedValue * 255);
+            ctxD.fillStyle = `rgb(${gray},${gray},${gray})`;
+            ctxD.fillRect(0, 0, canvasD.width, canvasD.height);
+        }
+
+        function displayCurrentBasisAndProduct() {
+            if (!selectedBlockData) return;
+            uValSpan.textContent = currentU;
+            vValSpan.textContent = currentV;
+            const currentBasis = allBasisFunctions[currentU][currentV];
+            drawBasisOnC(currentBasis);
+            const coefficient = allCoefficients[currentU][currentV];
+            innerProductValSpan.textContent = coefficient.toFixed(2);
+            drawInnerProductOnD(coefficient, currentCoeffAbsMax);
+        }
+
+        function processSelectedBlockAllCoefficients() {
+            if (!selectedBlockData) return;
+            // N_DCTサイズで初期化
+            allCoefficients = Array(N_DCT).fill(null).map(() => Array(N_DCT).fill(0));
+            let maxAbs = 0;
+            for (let u = 0; u < N_DCT; u++) {
+                for (let v = 0; v < N_DCT; v++) {
+                    const basis = allBasisFunctions[u][v];
+                    const coeff = calculateInnerProduct(selectedBlockData, basis);
+                    allCoefficients[u][v] = coeff;
+                    if (Math.abs(coeff) > maxAbs) maxAbs = Math.abs(coeff);
+                }
+            }
+            currentCoeffAbsMax = (maxAbs === 0) ? 1 : maxAbs;
+            displayCurrentBasisAndProduct();
+        }
+
+        nextBasisBtn.addEventListener('click', () => {
+            if (!selectedBlockData) return;
+            currentV++;
+            if (currentV >= N_DCT) {
+                currentV = 0;
+                currentU++;
+                if (currentU >= N_DCT) currentU = 0;
+            }
+            displayCurrentBasisAndProduct();
+        });
+
+        prevBasisBtn.addEventListener('click', () => {
+            if (!selectedBlockData) return;
+            currentV--;
+            if (currentV < 0) {
+                currentV = N_DCT - 1;
+                currentU--;
+                if (currentU < 0) currentU = N_DCT - 1;
+            }
+            displayCurrentBasisAndProduct();
+        });
+
+        processAllBtn.addEventListener('click', () => {
+            if (!selectedBlockData) return;
+            let tableHTML = '<table id="dctCoefficientsTable" class="w-full">';
+            tableHTML += '<thead><tr><th>u\\v</th>';
+            for (let v_idx = 0; v_idx < N_DCT; v_idx++) tableHTML += `<th>${v_idx}</th>`;
+            tableHTML += '</tr></thead><tbody>';
+
+            for (let u_idx = 0; u_idx < N_DCT; u_idx++) {
+                tableHTML += `<tr><th>${u_idx}</th>`;
+                for (let v_idx = 0; v_idx < N_DCT; v_idx++) {
+                    const selectedClass = selectedCoefficientsForIDCT[u_idx][v_idx] ? 'selected-for-idct' : '';
+                    tableHTML += `<td data-u="${u_idx}" data-v="${v_idx}" class="${selectedClass}">${allCoefficients[u_idx][v_idx].toFixed(1)}</td>`;
+                }
+                tableHTML += '</tr>';
+            }
+            tableHTML += '</tbody></table>';
+            dctCoefficientsTableContainer.innerHTML = tableHTML;
+            dctCoefficientsOutputDiv.classList.remove('hidden');
+            idctBtn.disabled = false;
+            clearIdctSelectionBtn.disabled = false;
+
+            // --- ドラッグ範囲選択用変数 ---
+            let isDragging = false;
+            let dragStart = null;
+            let dragCurrent = null;
+            const cells = dctCoefficientsTableContainer.querySelectorAll('td');
+
+            // 範囲内か判定
+            function isInDragRange(u, v, start, end) {
+                const uMin = Math.min(start.u, end.u);
+                const uMax = Math.max(start.u, end.u);
+                const vMin = Math.min(start.v, end.v);
+                const vMax = Math.max(start.v, end.v);
+                return u >= uMin && u <= uMax && v >= vMin && v <= vMax;
+            }
+
+            // 一時ハイライト用
+            function updateDragHighlight() {
+                cells.forEach(cell => {
+                    const u = parseInt(cell.dataset.u);
+                    const v = parseInt(cell.dataset.v);
+                    if (isDragging && dragStart && dragCurrent && isInDragRange(u, v, dragStart, dragCurrent)) {
+                        cell.classList.add('selected-for-idct-temp');
+                    } else {
+                        cell.classList.remove('selected-for-idct-temp');
+                    }
+                });
+            }
+
+            // CSS: 一時ハイライト色
+            const style = document.createElement('style');
+            style.innerHTML = `#dctCoefficientsTable td.selected-for-idct-temp { background-color: #e0f7fa !important; }`;
+            document.head.appendChild(style);
+
+            cells.forEach(cell => {
+                cell.addEventListener('mousedown', (e) => {
+                    e.preventDefault();
+                    isDragging = true;
+                    const u = parseInt(cell.dataset.u);
+                    const v = parseInt(cell.dataset.v);
+                    dragStart = { u, v };
+                    dragCurrent = { u, v };
+                    updateDragHighlight();
+                });
+                cell.addEventListener('mouseenter', (e) => {
+                    if (isDragging && dragStart) {
+                        const u = parseInt(cell.dataset.u);
+                        const v = parseInt(cell.dataset.v);
+                        dragCurrent = { u, v };
+                        updateDragHighlight();
+                    }
+                });
+                cell.addEventListener('mouseup', (e) => {
+                    if (isDragging && dragStart) {
+                        const uEnd = parseInt(cell.dataset.u);
+                        const vEnd = parseInt(cell.dataset.v);
+                        if (dragStart.u === uEnd && dragStart.v === vEnd) {
+                            // 単体クリック扱い
+                            selectedCoefficientsForIDCT[uEnd][vEnd] = !selectedCoefficientsForIDCT[uEnd][vEnd];
+                            cell.classList.toggle('selected-for-idct');
+                        } else {
+                            // 範囲トグル
+                            cells.forEach(c => {
+                                const u = parseInt(c.dataset.u);
+                                const v = parseInt(c.dataset.v);
+                                if (isInDragRange(u, v, dragStart, { u: uEnd, v: vEnd })) {
+                                    selectedCoefficientsForIDCT[u][v] = !selectedCoefficientsForIDCT[u][v];
+                                    c.classList.toggle('selected-for-idct');
+                                }
+                            });
+                        }
+                        isDragging = false;
+                        dragStart = null;
+                        dragCurrent = null;
+                        updateDragHighlight();
+                    }
+                });
+            });
+            // マウスがテーブル外に出た場合ドラッグ解除
+            dctCoefficientsTableContainer.addEventListener('mouseleave', () => {
+                isDragging = false;
+                dragStart = null;
+                dragCurrent = null;
+                updateDragHighlight();
+            });
+        });
+
+        // IDCT Button
+        idctBtn.addEventListener('click', () => {
+            if (!selectedBlockData) return;
+            performIDCT();
+        });
+
+        // Clear IDCT Selection Button
+        clearIdctSelectionBtn.addEventListener('click', () => {
+            selectedCoefficientsForIDCT = Array(N_DCT).fill(null).map(() => Array(N_DCT).fill(false));
+            const cells = dctCoefficientsTableContainer.querySelectorAll('td');
+            cells.forEach(cell => cell.classList.remove('selected-for-idct'));
+            clearCanvasWithMessage(canvasE, 'IDCT結果');
+        });
+
+
+        function performIDCT() {
+            const reconstructedBlock = Array(N_DCT).fill(null).map(() => Array(N_DCT).fill(0));
+            for (let x = 0; x < N_DCT; x++) {
+                for (let y = 0; y < N_DCT; y++) {
+                    let sum = 0;
+                    for (let u = 0; u < N_DCT; u++) {
+                        for (let v = 0; v < N_DCT; v++) {
+                            if (selectedCoefficientsForIDCT[u][v]) { // Only use selected coefficients
+                                sum += allCoefficients[u][v] * allBasisFunctions[u][v][x][y];
+                            }
+                        }
+                    }
+                    reconstructedBlock[x][y] = sum;
+                }
+            }
+            drawIDCTResultOnE(reconstructedBlock);
+        }
+
+        function drawIDCTResultOnE(reconstructedBlockMeanCentered) {
+            clearCanvas(canvasE);
+            const cellSize = canvasE.width / N_DCT;
+            // const idctImageData = ctxE.createImageData(N_DCT, N_DCT); // Not directly used for drawing magnified version
+
+            for (let r = 0; r < N_DCT; r++) {
+                for (let c = 0; c < N_DCT; c++) {
+                    let val = reconstructedBlockMeanCentered[r][c] + 128; // Add mean back
+                    val = Math.max(0, Math.min(255, Math.round(val))); // Clamp to 0-255 and round
+
+                    ctxE.fillStyle = `rgb(${val},${val},${val})`;
+                    ctxE.fillRect(c * cellSize, r * cellSize, cellSize, cellSize);
+                }
+            }
+            // Draw grid on Canvas E
+            ctxE.strokeStyle = '#888';
+            ctxE.lineWidth = 0.5;
+            for (let i = 1; i < N_DCT; i++) {
+                ctxE.beginPath();
+                ctxE.moveTo(i * cellSize, 0);
+                ctxE.lineTo(i * cellSize, canvasE.height);
+                ctxE.stroke();
+                ctxE.beginPath();
+                ctxE.moveTo(0, i * cellSize);
+                ctxE.lineTo(canvasE.width, i * cellSize);
+                ctxE.stroke();
+            }
+        }
+
+        // Download Canvas content as JPEG
+        downloadBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const canvasId = btn.dataset.canvasId;
+                const canvasToDownload = document.getElementById(canvasId);
+                if (canvasToDownload) {
+                    const tempCanvas = document.createElement('canvas');
+                    tempCanvas.width = canvasToDownload.width;
+                    tempCanvas.height = canvasToDownload.height;
+                    const tempCtx = tempCanvas.getContext('2d');
+                    tempCtx.fillStyle = '#FFFFFF';
+                    tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+                    tempCtx.drawImage(canvasToDownload, 0, 0);
+
+                    const dataURL = tempCanvas.toDataURL('image/jpeg', 0.9);
+                    const link = document.createElement('a');
+                    link.href = dataURL;
+                    link.download = `${canvasId}_${new Date().toISOString().slice(0, 10)}.jpg`;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                } else {
+                    messageArea.textContent = `Canvas ${canvasId} が見つかりません。`;
+                }
+            });
+        });
+
+
+        // Canvasをクリア (メッセージ付き)
+        function clearCanvasWithMessage(canvas, message) {
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#f0f0f0';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.strokeStyle = '#ccc';
+            ctx.strokeRect(0, 0, canvas.width, canvas.height);
+            if (message) {
+                ctx.fillStyle = 'black';
+                ctx.font = '14px Inter';
+                ctx.textAlign = 'center';
+                ctx.fillText(message, canvas.width / 2, canvas.height / 2);
+            }
+        }
+        // Canvasをクリア (メッセージなし)
+        function clearCanvas(canvas) {
+            clearCanvasWithMessage(canvas, null);
+        }
+
+        // 初期状態でCanvasをクリア
+        clearCanvasWithMessage(canvasA, '画像をアップロード');
+        clearCanvasWithMessage(canvasB, '領域を選択');
+        clearCanvasWithMessage(canvasC, '領域を選択');
+        clearCanvasWithMessage(canvasD, 'N/A');
+        clearCanvasWithMessage(canvasE, 'IDCT結果');
+
+    </script>
+</body>
+
+</html>
